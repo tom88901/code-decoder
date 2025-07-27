@@ -14,71 +14,48 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install uncompyle6
         run: |
           python -m pip install --upgrade pip
           pip install uncompyle6
 
-      - name: Create & run decode script
+      - name: Decode & Decompile in one go
+        shell: bash
         run: |
-          cat > decode_ctool.py << 'EOF'
-          #!/usr/bin/env python3
-          import re, ast, base64, bz2, zlib, marshal, subprocess, importlib.util, time, struct
+          # 1. Extract payload (strip quotes, newlines)
+          PAYLOAD=$(sed -n "s/.*a85decode *( *b'\(.*\)' *).*/\1/p" CTOOL.py.txt | tr -d '\\n')
+          # 2. Decode Base85 (RFC1924), fallback Ascii85
+          python3 - << 'PYCODE'
+import base64, bz2, zlib, marshal, importlib.util, time, struct
 
-          # 1. Đọc source
-          text = open('CTOOL.py.txt', encoding='utf-8', errors='ignore').read()
+b = PAYLOAD = bytes.fromhex('')  # dummy, will be overwritten by shell
+# Replace b with shell variable:
+import os
+payload = base64.b85decode(os.environ['PAYLOAD']) if True else None
+try:
+    data85 = base64.b85decode(os.environ['PAYLOAD'].encode())
+except Exception:
+    data85 = base64.a85decode(os.environ['PAYLOAD'].encode(), adobe=False, ignorechars=b'\n\r\t ')
+data1 = bz2.decompress(data85)
+data2 = zlib.decompress(data1)
+co = marshal.loads(data2)
 
-          # 2. Extract bytes literal
-          def extract(text):
-              idx = text.find("a85decode")
-              if idx<0: raise RuntimeError("No a85decode")
-              bpos = text.find("b'", idx); quote="'"
-              if bpos<0:
-                  bpos = text.find('b"', idx); quote='"'
-              if bpos<0: raise RuntimeError("No bytes literal")
-              i=bpos+2; esc=False
-              while i<len(text):
-                  c=text[i]
-                  if esc: esc=False
-                  elif c=='\\': esc=True
-                  elif c==quote: end=i; break
-                  i+=1
-              lit=text[bpos:end+1]
-              return ast.literal_eval(lit)
+# write .pyc
+magic = importlib.util.MAGIC_NUMBER
+ts = struct.pack('<I', int(time.time()))
+sz = struct.pack('<I', 0)
+body = marshal.dumps(co)
+with open('decoded.pyc','wb') as f:
+    f.write(magic + ts + sz + body)
+PYCODE
 
-          payload = extract(text)
-
-          # 3. Decode Base85/Ascii85
-          try:
-              data85 = base64.b85decode(payload)
-          except:
-              data85 = base64.a85decode(payload, adobe=False, ignorechars=b'\\n\\r\\t ')
-
-          # 4. Decompress BZ2 → Zlib
-          data1 = bz2.decompress(data85)
-          data2 = zlib.decompress(data1)
-
-          # 5. Marshal → code object
-          co = marshal.loads(data2)
-
-          # 6. Ghi .pyc
-          magic=importlib.util.MAGIC_NUMBER
-          ts=struct.pack('<I', int(time.time()))
-          sz=struct.pack('<I', 0)
-          body=marshal.dumps(co)
-          with open('decoded.pyc','wb') as f:
-              f.write(magic+ts+sz+body)
-
-          # 7. Decompile
-          subprocess.check_call(['uncompyle6','decoded.pyc','-o','decoded_source.py'])
-          EOF
-          chmod +x decode_ctool.py
-          ./decode_ctool.py
+          # 3. Decompile bytecode to source
+          uncompyle6 decoded.pyc > decoded_source.py
 
       - name: Commit decoded source
         run: |
