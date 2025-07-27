@@ -1,4 +1,4 @@
-name: Auto‑decode CTOOL
+name: Auto decode CTOOL
 
 on:
   push:
