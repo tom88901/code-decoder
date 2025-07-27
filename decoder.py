@@ -16,25 +16,25 @@ with open(file_to_decode, 'rb') as f:
     obfuscated_content = f.read()
 
 try:
-    match = re.search(rb"a85decode\(b'([^']*)'\)", obfuscated_content)
+    # --- SỬA LỖI BIỂU THỨC CHÍNH QUY ---
+    # Pattern này tìm kiếm chuỗi nằm giữa `_pymeomeo=b'` và `'` cuối cùng
+    # Nó đơn giản và phù hợp chính xác với cấu trúc tệp của bạn.
+    match = re.search(rb"_pymeomeo=b'([^']*)'", obfuscated_content)
+    
     if not match:
         raise ValueError("Không thể tìm thấy chuỗi mã hóa base85 hợp lệ.")
         
     encoded_string = match.group(1)
+    # --- KẾT THÚC SỬA LỖI ---
     
-    # 1. Giải mã Base85 (xử lý ký tự escape)
-    encoded_string_fixed = encoded_string.decode('unicode_escape').encode('latin1')
-    data_after_b85 = base64.a85decode(encoded_string_fixed)
+    # 1. Giải mã Base85
+    data_after_b85 = base64.a85decode(encoded_string)
 
-    # --- SỬA LỖI THỨ TỰ GIẢI NÉN ---
-    # Thứ tự giải nén đúng theo file gốc là: bz2 -> zlib
-    
-    # 2. Giải nén bz2
+    # 2. Giải nén BZ2
     data_after_bz2 = bz2.decompress(data_after_b85)
 
-    # 3. Giải nén zlib
+    # 3. Giải nén ZLIB
     marshaled_code = zlib.decompress(data_after_bz2)
-    # --- KẾT THÚC SỬA LỖI ---
 
     # 4. Tải đối tượng mã bằng marshal
     code_obj = marshal.loads(marshaled_code)
