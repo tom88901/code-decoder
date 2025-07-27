@@ -19,12 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Bước 2: Thiết lập môi trường Python 3.10
+      # Bước 2: Thiết lập môi trường Python 3.8
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
-      # Bước 3: Chạy script giải mã và xem kết quả
-      - name: Run deobfuscation script
-        run: python decoder.py
+      # --- THAY ĐỔI ĐỂ GỠ LỖI ---
+      # Bước 3: In ra nội dung của tệp CTOOL.py để kiểm tra
+      - name: Display CTOOL.py content
+        run: cat CTOOL.py
+      # --- KẾT THÚC THAY ĐỔI ---
