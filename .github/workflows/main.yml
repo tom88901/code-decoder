@@ -1,5 +1,4 @@
-# Tên của quy trình GitHub Actions
-name: Deobfuscate Python Script
+name: Advanced Debugging Workflow
 
 on:
   push:
@@ -7,17 +6,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  decode:
+  debug-job:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: 1. Lấy mã nguồn từ kho chứa
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 2. Thiết lập môi trường Python 3.8
         uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
-      - name: Run deobfuscation script
-        run: python decoder.py
+      - name: 3. Liệt kê các tệp trong thư mục
+        run: ls -la
+
+      - name: 4. Chạy Script Gỡ lỗi Chuyên dụng
+        run: python debug_script.py
