@@ -1,5 +1,4 @@
-# .github/workflows/auto_decode_ctool.yml
-name: Auto-decode CTOOL Obfuscation
+name: Auto‑decode CTOOL
 
 on:
   push:
@@ -15,70 +14,70 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install requirements
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install uncompyle6
 
-      - name: Create decode script
+      - name: Create & run decode script
         run: |
           cat > decode_ctool.py << 'EOF'
           #!/usr/bin/env python3
-          import re, sys, base64, bz2, zlib, marshal, subprocess, ast
+          import re, ast, base64, bz2, zlib, marshal, subprocess, importlib.util, time, struct
 
-          BYTE_LITERAL_RE = re.compile(
-              r"a85decode\(\s*"
-              r"(b'(?:(?:\\\\.)|[^\\\\'])*'|b\"(?:(?:\\\\.)|[^\\\\\"])*\")"
-              r"\s*\)",
-              re.DOTALL
-          )
+          # 1. Đọc source
+          text = open('CTOOL.py.txt', encoding='utf-8', errors='ignore').read()
 
-          def extract_payload(text):
-              m = BYTE_LITERAL_RE.search(text)
-              if not m:
-                  raise RuntimeError("Cannot find a85decode(...) payload")
-              literal = m.group(1)
-              return ast.literal_eval(literal)
+          # 2. Extract bytes literal
+          def extract(text):
+              idx = text.find("a85decode")
+              if idx<0: raise RuntimeError("No a85decode")
+              bpos = text.find("b'", idx); quote="'"
+              if bpos<0:
+                  bpos = text.find('b"', idx); quote='"'
+              if bpos<0: raise RuntimeError("No bytes literal")
+              i=bpos+2; esc=False
+              while i<len(text):
+                  c=text[i]
+                  if esc: esc=False
+                  elif c=='\\': esc=True
+                  elif c==quote: end=i; break
+                  i+=1
+              lit=text[bpos:end+1]
+              return ast.literal_eval(lit)
 
-          def decode_payload(payload):
-              try:
-                  return base64.b85decode(payload)
-              except Exception:
-                  return base64.a85decode(payload, adobe=False, ignorechars=b'\n\r\t ')
+          payload = extract(text)
 
-          def main():
-              src = open('CTOOL.py.txt', encoding='utf-8').read()
-              payload = extract_payload(src)
-              data = decode_payload(payload)
-              data = bz2.decompress(data)
-              data = zlib.decompress(data)
-              code_obj = marshal.loads(data)
+          # 3. Decode Base85/Ascii85
+          try:
+              data85 = base64.b85decode(payload)
+          except:
+              data85 = base64.a85decode(payload, adobe=False, ignorechars=b'\\n\\r\\t ')
 
-              # write .pyc
-              import importlib.util, time, struct
-              magic = importlib.util.MAGIC_NUMBER
-              ts = struct.pack('<I', int(time.time()))
-              sz = struct.pack('<I', 0)
-              body = marshal.dumps(code_obj)
-              with open('decoded.pyc', 'wb') as f:
-                  f.write(magic + ts + sz + body)
+          # 4. Decompress BZ2 → Zlib
+          data1 = bz2.decompress(data85)
+          data2 = zlib.decompress(data1)
 
-              # decompile
-              subprocess.check_call(['uncompyle6', 'decoded.pyc', '-o', 'decoded_source.py'])
-              print("[+] Decompilation complete.")
+          # 5. Marshal → code object
+          co = marshal.loads(data2)
 
-          if __name__ == '__main__':
-              main()
+          # 6. Ghi .pyc
+          magic=importlib.util.MAGIC_NUMBER
+          ts=struct.pack('<I', int(time.time()))
+          sz=struct.pack('<I', 0)
+          body=marshal.dumps(co)
+          with open('decoded.pyc','wb') as f:
+              f.write(magic+ts+sz+body)
+
+          # 7. Decompile
+          subprocess.check_call(['uncompyle6','decoded.pyc','-o','decoded_source.py'])
           EOF
           chmod +x decode_ctool.py
-
-      - name: Run decode script
-        run: |
           ./decode_ctool.py
 
       - name: Commit decoded source
@@ -86,5 +85,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add decoded_source.py
-          git diff --quiet || git commit -m "Auto-decode CTOOL.py.txt"
+          git diff --quiet || git commit -m "Auto‑decode CTOOL.py.txt"
           git push
