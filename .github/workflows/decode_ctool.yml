@@ -3,7 +3,7 @@ name: Decode CTOOL Obfuscation
 on:
   push:
     paths:
-      - 'CTOOL.py'
+      - 'CTOOL.py.txt'
 
 jobs:
   decode:
