@@ -1,54 +1,77 @@
-name: Decode CTOOL Obfuscation
+# .github/workflows/auto_decode_ctool.yml
+name: Auto-decode CTOOL Obfuscation
 
 on:
   push:
     paths:
       - 'CTOOL.py.txt'
-  workflow_dispatch:      # cho phép chạy thủ công từ GitHub UI
-  schedule:               # chạy tự động mỗi đêm (nửa đêm UTC)
-    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   decode:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install decompiler
+      - name: Install requirements
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install uncompyle6
 
-      - name: Decode CTOOL.py.txt
+      - name: Create decode script
         run: |
-          python - << 'EOF'
-          import re, base64, bz2, zlib, marshal, sys
+          cat > decode_ctool.py << 'EOF'
+          #!/usr/bin/env python3
+          import re, sys, base64, bz2, zlib, marshal, subprocess
 
-          src = open('CTOOL.py.txt', encoding='utf-8').read()
-          m = re.search(r"a85decode\(\s*b['\"](.+?)['\"]\s*\)", src, re.DOTALL)
-          if not m:
-              sys.exit("❌ Không tìm thấy payload")
-          payload = m.group(1).encode('ascii').decode('unicode_escape').encode('ascii')
-          try:
-              decoded = base64.b85decode(payload)
-          except:
-              decoded = base64.a85decode(payload, adobe=False, ignorechars=b'\n\r\t ')
-          data = bz2.decompress(decoded)
-          data = zlib.decompress(data)
-          code_obj = marshal.loads(data)
-          with open('decoded.pyc', 'wb') as f:
-              f.write(marshal.dumps(code_obj))
+          def extract_payload(text):
+              m = re.search(r"a85decode\(\s*b['\"](.+?)['\"]\s*\)", text, re.DOTALL)
+              if not m:
+                  raise RuntimeError("Cannot find a85decode(...) payload")
+              raw = m.group(1).encode('utf-8').decode('unicode_escape')
+              return raw.encode('ascii')
+
+          def decode_payload(payload):
+              try:
+                  return base64.b85decode(payload)
+              except:
+                  return base64.a85decode(payload, adobe=False, ignorechars=b'\\n\\r\\t ')
+
+          def main():
+              src = open('CTOOL.py.txt', encoding='utf-8').read()
+              payload = extract_payload(src)
+              data = decode_payload(payload)
+              data = bz2.decompress(data)
+              data = zlib.decompress(data)
+              code_obj = marshal.loads(data)
+
+              # write .pyc
+              import importlib.util, time, struct
+              magic = importlib.util.MAGIC_NUMBER
+              ts = struct.pack('<I', int(time.time()))
+              sz = struct.pack('<I', 0)
+              body = marshal.dumps(code_obj)
+              with open('decoded.pyc', 'wb') as f:
+                  f.write(magic + ts + sz + body)
+
+              # decompile
+              subprocess.check_call(['uncompyle6', 'decoded.pyc', '-o', 'decoded_source.py'])
+
+          if __name__ == '__main__':
+              main()
           EOF
+          chmod +x decode_ctool.py
 
-      - name: Decompile to source
-        run: uncompyle6 decoded.pyc > decoded_source.py
+      - name: Run decode script
+        run: |
+          ./decode_ctool.py
 
       - name: Commit decoded source
         run: |
