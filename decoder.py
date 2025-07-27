@@ -4,6 +4,7 @@ import zlib
 import marshal
 import dis
 import os
+import re # Thêm thư viện re
 
 # Tên tệp chứa mã bị làm rối
 file_to_decode = 'CTOOL.py'
@@ -18,26 +19,22 @@ with open(file_to_decode, 'rb') as f:
     obfuscated_content = f.read()
 
 try:
-    # --- PHẦN ĐÃ SỬA LỖI ---
-    # Marker mới để trích xuất chuỗi base85 một cách chính xác
-    start_marker = b".a85decode(b'"
-    end_marker = b"')))))"
+    # --- PHẦN ĐÃ SỬA LỖI (Nâng cấp) ---
+    # Sử dụng Regular Expression để tìm chuỗi mã hóa một cách đáng tin cậy.
+    # Pattern này sẽ tìm đoạn văn bản nằm bên trong b'...' của hàm a85decode.
+    match = re.search(rb"a85decode\(b'([^']*)'\)", obfuscated_content)
     
-    start_index = obfuscated_content.find(start_marker)
-    if start_index == -1:
-        raise ValueError("Không tìm thấy start_marker trong tệp.")
-    
-    start_index += len(start_marker)
-    
-    end_index = obfuscated_content.rfind(end_marker)
-    if end_index == -1 or end_index < start_index:
-        raise ValueError("Không tìm thấy end_marker hoặc end_marker ở vị trí không hợp lệ.")
-
-    encoded_string = obfuscated_content[start_index:end_index]
+    if not match:
+        raise ValueError("Không thể tìm thấy chuỗi mã hóa base85 hợp lệ trong tệp.")
+        
+    encoded_string = match.group(1)
     # --- KẾT THÚC PHẦN SỬA LỖI ---
 
     # 1. Giải mã Base85
-    compressed_data_zlib = base64.a85decode(encoded_string)
+    # Lưu ý: Dữ liệu trong tệp gốc có một số ký tự '\' cần được un-escape
+    # ví dụ \\ -> \. Python's decode('unicode_escape') sẽ xử lý việc này.
+    encoded_string_fixed = encoded_string.decode('unicode_escape').encode('latin1')
+    compressed_data_zlib = base64.a85decode(encoded_string_fixed)
 
     # 2. Giải nén zlib
     compressed_data_bz2 = zlib.decompress(compressed_data_zlib)
