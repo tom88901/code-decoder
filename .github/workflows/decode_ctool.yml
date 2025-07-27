@@ -26,27 +26,42 @@ jobs:
       - name: Decode CTOOL.py.txt
         run: |
           python - << 'EOF'
-          import re, base64, bz2, zlib, marshal
+          import re, base64, bz2, zlib, marshal, sys
 
-          # 1. Đọc và tách payload
+          # Đọc file
           src = open('CTOOL.py.txt', encoding='utf-8').read()
-          # Lấy payload giữa a85decode(b'...') (có thể multiline)
-          m = re.search(r"a85decode\(b'(.+?)'\)", src, re.DOTALL)
+
+          # Tách payload string (hỗ trợ vừa ' vừa ")
+          m = re.search(r"a85decode\(\s*b['\"](.+?)['\"]\s*\)", src, re.DOTALL)
           if not m:
-              raise RuntimeError("Không tìm thấy payload")
-          payload = m.group(1).replace('\\n','').encode()
+              print("❌ Không tìm thấy a85decode(...).")
+              sys.exit(1)
+          payload_txt = m.group(1)
 
-          # 2. Giải mã Base85 (RFC 1924)
-          data = base64.b85decode(payload)
+          # Nếu trong payload có \\n, \\t, ... thì decode escape
+          payload_txt = payload_txt.encode('utf-8').decode('unicode_escape')
+          payload = payload_txt.encode('ascii')  # Base85 chỉ có ASCII
 
-          # 3. Giải nén BZ2 → Zlib
-          data = bz2.decompress(data)
+          # Thử Base‑85 (RFC 1924) trước, nếu lỗi thì fallback Ascii85
+          try:
+              decoded = base64.b85decode(payload)
+              print("✅ Dùng base64.b85decode() thành công.")
+          except Exception as e1:
+              print(f"⚠️ b85decode lỗi: {e1}, thử a85decode...")
+              # Bỏ qua newline, tab, space
+              decoded = base64.a85decode(payload, adobe=False, ignorechars=b'\n\r\t ')
+              print("✅ Dùng base64.a85decode() thành công.")
+
+          # Giải nén BZ2 → Zlib
+          data = bz2.decompress(decoded)
           data = zlib.decompress(data)
 
-          # 4. Tạo code object và xuất .pyc
+          # Tạo code object và ghi .pyc
           code_obj = marshal.loads(data)
           with open('decoded.pyc', 'wb') as f:
               f.write(marshal.dumps(code_obj))
+
+          print("✅ Đã xuất decoded.pyc")
           EOF
 
       - name: Decompile to source
@@ -58,5 +73,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add decoded_source.py
-          git diff --quiet && echo "No changes to commit" || git commit -m "Auto-decode CTOOL.py.txt"
+          git diff --quiet || git commit -m "Auto-decode CTOOL.py.txt"
           git push
