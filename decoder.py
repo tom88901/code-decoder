@@ -4,7 +4,6 @@ import zlib
 import marshal
 import dis
 import os
-import re
 
 file_to_decode = 'CTOOL.py'
 
@@ -16,30 +15,34 @@ with open(file_to_decode, 'rb') as f:
     obfuscated_content = f.read()
 
 try:
-    # --- SỬA LỖI BIỂU THỨC CHÍNH QUY ---
-    # Pattern này tìm kiếm chuỗi nằm giữa `_pymeomeo=b'` và `'` cuối cùng
-    # Nó đơn giản và phù hợp chính xác với cấu trúc tệp của bạn.
-    match = re.search(rb"_pymeomeo=b'([^']*)'", obfuscated_content)
+    # --- PHƯƠNG PHÁP TRÍCH XUẤT MỚI, ĐƠN GIẢN VÀ HIỆU QUẢ ---
+    # 1. Tìm điểm bắt đầu của chuỗi mã hóa
+    start_marker = b"_pymeomeo=b'"
+    start_index = obfuscated_content.find(start_marker)
     
-    if not match:
-        raise ValueError("Không thể tìm thấy chuỗi mã hóa base85 hợp lệ.")
-        
-    encoded_string = match.group(1)
-    # --- KẾT THÚC SỬA LỖI ---
+    if start_index == -1:
+        raise ValueError("Không tìm thấy điểm bắt đầu của chuỗi mã hóa (_pymeomeo=b').")
     
-    # 1. Giải mã Base85
+    # Dữ liệu bắt đầu ngay sau marker
+    start_index += len(start_marker)
+
+    # 2. Tìm điểm kết thúc của chuỗi mã hóa (dấu ' ngay sau đó)
+    end_index = obfuscated_content.find(b"'", start_index)
+
+    if end_index == -1:
+        raise ValueError("Không tìm thấy điểm kết thúc của chuỗi mã hóa.")
+
+    # 3. Cắt chuỗi mã hóa ra
+    encoded_string = obfuscated_content[start_index:end_index]
+    # --- KẾT THÚC PHƯƠNG PHÁP MỚI ---
+
+    # Các bước giải mã giữ nguyên như cũ
     data_after_b85 = base64.a85decode(encoded_string)
-
-    # 2. Giải nén BZ2
     data_after_bz2 = bz2.decompress(data_after_b85)
-
-    # 3. Giải nén ZLIB
     marshaled_code = zlib.decompress(data_after_bz2)
-
-    # 4. Tải đối tượng mã bằng marshal
     code_obj = marshal.loads(marshaled_code)
 
-    # 5. Phân tách và in mã bytecode
+    # In kết quả
     print(f"--- Bắt đầu giải mã bytecode từ tệp: {file_to_decode} ---")
     dis.dis(code_obj)
     print("--- Kết thúc giải mã ---")
