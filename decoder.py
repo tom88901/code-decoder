@@ -7,7 +7,7 @@ import os
 import re
 
 # Tên tệp bạn muốn giải mã
-FILENAME = 'CTOOL.py.txt' 
+FILENAME = 'CTOOL.py' 
 
 try:
     print(f"--- Bắt đầu giải mã tệp: {FILENAME} ---")
