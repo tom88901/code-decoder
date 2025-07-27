@@ -17,14 +17,24 @@ if not os.path.exists(file_to_decode):
 with open(file_to_decode, 'rb') as f:
     obfuscated_content = f.read()
 
-# Tìm và trích xuất chuỗi mã hóa base85
 try:
-    # Trích xuất phần dữ liệu base85 một cách an toàn
-    start_marker = b"base64.a85decode(b'"
-    end_marker = b"')))"
-    start_index = obfuscated_content.find(start_marker) + len(start_marker)
+    # --- PHẦN ĐÃ SỬA LỖI ---
+    # Marker mới để trích xuất chuỗi base85 một cách chính xác
+    start_marker = b".a85decode(b'"
+    end_marker = b"')))))"
+    
+    start_index = obfuscated_content.find(start_marker)
+    if start_index == -1:
+        raise ValueError("Không tìm thấy start_marker trong tệp.")
+    
+    start_index += len(start_marker)
+    
     end_index = obfuscated_content.rfind(end_marker)
+    if end_index == -1 or end_index < start_index:
+        raise ValueError("Không tìm thấy end_marker hoặc end_marker ở vị trí không hợp lệ.")
+
     encoded_string = obfuscated_content[start_index:end_index]
+    # --- KẾT THÚC PHẦN SỬA LỖI ---
 
     # 1. Giải mã Base85
     compressed_data_zlib = base64.a85decode(encoded_string)
