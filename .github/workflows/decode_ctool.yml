@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -28,17 +28,23 @@ jobs:
           python - << 'EOF'
           import re, base64, bz2, zlib, marshal
 
-          # Đọc và tách payload
+          # 1. Đọc và tách payload
           src = open('CTOOL.py.txt', encoding='utf-8').read()
-          payload = re.search(r"a85decode\(b'(.*)'\)", src).group(1).encode()
+          # Lấy payload giữa a85decode(b'...') (có thể multiline)
+          m = re.search(r"a85decode\(b'(.+?)'\)", src, re.DOTALL)
+          if not m:
+              raise RuntimeError("Không tìm thấy payload")
+          payload = m.group(1).replace('\\n','').encode()
 
-          # Giải mã
-          data = base64.a85decode(payload)
+          # 2. Giải mã Base85 (RFC 1924)
+          data = base64.b85decode(payload)
+
+          # 3. Giải nén BZ2 → Zlib
           data = bz2.decompress(data)
           data = zlib.decompress(data)
-          code_obj = marshal.loads(data)
 
-          # Ghi .pyc
+          # 4. Tạo code object và xuất .pyc
+          code_obj = marshal.loads(data)
           with open('decoded.pyc', 'wb') as f:
               f.write(marshal.dumps(code_obj))
           EOF
@@ -52,5 +58,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add decoded_source.py
-          git commit -m "Auto-decode CTOOL.py.txt" || echo "No changes to commit"
+          git diff --quiet && echo "No changes to commit" || git commit -m "Auto-decode CTOOL.py.txt"
           git push
