@@ -29,20 +29,22 @@ jobs:
         run: |
           cat > decode_ctool.py << 'EOF'
           #!/usr/bin/env python3
-          import re, sys, base64, bz2, zlib, marshal, subprocess
+          import re, sys, base64, bz2, zlib, marshal, subprocess, ast
 
           def extract_payload(text):
-              m = re.search(r"a85decode\(\s*b['\"](.+?)['\"]\s*\)", text, re.DOTALL)
+              # match nguyên payload literal b'…' hoặc b"…"
+              m = re.search(r"a85decode\(\s*(b['\"].+?['\"])\s*\)", text, re.DOTALL)
               if not m:
                   raise RuntimeError("Cannot find a85decode(...) payload")
-              raw = m.group(1).encode('utf-8').decode('unicode_escape')
-              return raw.encode('ascii')
+              literal = m.group(1)
+              # ast.literal_eval sẽ xử lý escape và trả về bytes tự nhiên
+              return ast.literal_eval(literal)
 
           def decode_payload(payload):
               try:
                   return base64.b85decode(payload)
-              except:
-                  return base64.a85decode(payload, adobe=False, ignorechars=b'\\n\\r\\t ')
+              except Exception:
+                  return base64.a85decode(payload, adobe=False, ignorechars=b'\n\r\t ')
 
           def main():
               src = open('CTOOL.py.txt', encoding='utf-8').read()
@@ -52,7 +54,7 @@ jobs:
               data = zlib.decompress(data)
               code_obj = marshal.loads(data)
 
-              # write .pyc
+              # ghi .pyc
               import importlib.util, time, struct
               magic = importlib.util.MAGIC_NUMBER
               ts = struct.pack('<I', int(time.time()))
