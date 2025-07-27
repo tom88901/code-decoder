@@ -1,0 +1,56 @@
+name: Decode CTOOL Obfuscation
+
+on:
+  push:
+    paths:
+      - 'CTOOL.py'
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install decompiler
+        run: |
+          python -m pip install --upgrade pip
+          pip install uncompyle6
+
+      - name: Decode CTOOL.py.txt
+        run: |
+          python - << 'EOF'
+          import re, base64, bz2, zlib, marshal
+
+          # Đọc và tách payload
+          src = open('CTOOL.py.txt', encoding='utf-8').read()
+          payload = re.search(r"a85decode\(b'(.*)'\)", src).group(1).encode()
+
+          # Giải mã
+          data = base64.a85decode(payload)
+          data = bz2.decompress(data)
+          data = zlib.decompress(data)
+          code_obj = marshal.loads(data)
+
+          # Ghi .pyc
+          with open('decoded.pyc', 'wb') as f:
+              f.write(marshal.dumps(code_obj))
+          EOF
+
+      - name: Decompile to source
+        run: |
+          uncompyle6 decoded.pyc > decoded_source.py
+
+      - name: Commit decoded source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add decoded_source.py
+          git commit -m "Auto-decode CTOOL.py.txt" || echo "No changes to commit"
+          git push
